@@ -1,0 +1,15 @@
+{
+  "name": "com.stinkysteak.com.stinkysteak.simplewebtransportnetick",
+  "version": "0.1.0",
+  "displayName": "SimpleWebTransport for Netick",
+  "description": "SimpleWebTransport for Netick",
+  "unity": "2021.3",
+  "documentationUrl": "",
+  "changelogUrl": "",
+  "licensesUrl": "",
+  "author": {
+    "name": "Stinkysteak",
+    "email": "stinkysteak@steaksoft.com",
+    "url": "https://steaksoft.net"
+  }
+}
