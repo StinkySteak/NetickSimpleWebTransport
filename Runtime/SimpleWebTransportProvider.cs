@@ -1,6 +1,7 @@
 using Netick.Unity;
 using System;
 using System.Collections.Generic;
+using UnityEditor.PackageManager;
 using UnityEngine;
 
 namespace Netick.Transport
@@ -38,8 +39,8 @@ namespace Netick.Transport
         }
 
         private SimpleWebTransportProvider _transportProvider;
-        private Dictionary<SimpleWebsocketPeer, SimpleWebConnection> _connectedClients;
-        private Queue<SimpleWebConnection> _freeClients;
+        private Dictionary<SimpleWebsocketPeer, SimpleWebConnection> _connections;
+        private Queue<SimpleWebConnection> _freeConnections;
         private NetManager _netManager;
         private BitBuffer _buffer;
 
@@ -54,11 +55,11 @@ namespace Netick.Transport
             _netManager.Init(Engine, this, _transportProvider.SimpleWebConfig);
             _buffer = new BitBuffer(createChunks: false);
 
-            _connectedClients = new(Engine.Config.MaxPlayers);
-            _freeClients = new(Engine.Config.MaxPlayers);
+            _connections = new(Engine.Config.MaxPlayers);
+            _freeConnections = new(Engine.Config.MaxPlayers);
 
             for (int i = 0; i < Engine.Config.MaxPlayers; i++)
-                _freeClients.Enqueue(new SimpleWebConnection());
+                _freeConnections.Enqueue(new SimpleWebConnection());
         }
 
         public override void Connect(string address, int port, byte[] connectionData, int connectionDataLength)
@@ -95,25 +96,53 @@ namespace Netick.Transport
 
         void ISimpleWebsocketEventListener.OnPeerConnected(SimpleWebsocketPeer peer)
         {
-            SimpleWebConnection connection = _freeClients.Dequeue();
+            SimpleWebConnection connection = _freeConnections.Dequeue();
             connection.Peer = peer;
 
-            _connectedClients.Add(peer, connection);
+            _connections.Add(peer, connection);
             NetworkPeer.OnConnected(connection);
         }
 
-        void ISimpleWebsocketEventListener.OnPeerDisconnected(SimpleWebsocketPeer peer)
+        void ISimpleWebsocketEventListener.OnPeerDisconnected(SimpleWebsocketPeer peer, DisconnectReason disconnectReason)
         {
-            SimpleWebConnection connection = _connectedClients[peer];
+            if (Engine.IsClient)
+            {
+                if (disconnectReason == DisconnectReason.ConnectionFailed || disconnectReason == DisconnectReason.Timeout)
+                {
+                    NetworkPeer.OnConnectFailed(ConnectionFailedReason.Timeout);
+                    return;
+                }
 
-            _connectedClients.Remove(peer);
-            _freeClients.Enqueue(connection);
+                if (disconnectReason == DisconnectReason.ConnectionRejected)
+                {
+                    NetworkPeer.OnConnectFailed(ConnectionFailedReason.Refused);
+                    return;
+                }
+            }
+
+            if (_connections.ContainsKey(peer))
+            {
+                SimpleWebConnection connection = _connections[peer];
+
+                _connections.Remove(peer);
+                _freeConnections.Enqueue(connection);
+
+                if (disconnectReason == DisconnectReason.Kick)
+                {
+                    NetworkPeer.OnDisconnected(connection, TransportDisconnectReason.Kick);
+                    return;
+                }
+
+                if (disconnectReason == DisconnectReason.Timeout)
+                {
+                    NetworkPeer.OnDisconnected(connection, TransportDisconnectReason.Timeout);
+                }
+            }
         }
-
 
         void ISimpleWebsocketEventListener.OnNetworkReceive(SimpleWebsocketPeer peer, byte[] bytes)
         {
-            if (!_connectedClients.TryGetValue(peer, out var c))
+            if (!_connections.TryGetValue(peer, out var c))
                 return;
 
             fixed (byte* ptr = bytes)

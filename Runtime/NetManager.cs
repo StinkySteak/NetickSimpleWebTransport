@@ -49,7 +49,7 @@ namespace Netick.Transport
 
             _peers.Remove(connectionId);
 
-            _listener.OnPeerDisconnected(peer);
+            _listener.OnPeerDisconnected(peer, DisconnectReason.Timeout);
         }
 
         internal void DisconnectPeer(SimpleWebsocketPeer peer)
@@ -120,8 +120,9 @@ namespace Netick.Transport
 
         private void OnWebClientDisconnected()
         {
-            UnityEngine.Debug.Log("OnWebClientDisconnected");
-            _listener.OnPeerDisconnected(_serverConnection);
+            bool hasConnected = _serverConnection != null;
+
+            _listener.OnPeerDisconnected(_serverConnection, hasConnected ? DisconnectReason.Timeout : DisconnectReason.ConnectionFailed);
         }
 
 
