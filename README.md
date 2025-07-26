@@ -1,6 +1,10 @@
 ## Feature
 Allow to use websocket on netick
 
+| Feature   | Status       |
+|-----------|--------------|
+| Websocket | Experimental |
+
 ## Installation
 
 ### Prerequisites
