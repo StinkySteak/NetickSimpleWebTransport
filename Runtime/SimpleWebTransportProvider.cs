@@ -32,6 +32,20 @@ namespace Netick.Transport
                 Peer.Send(ptr, length);
             }
 
+            public override void SendUserData(IntPtr ptr, int length, TransportDeliveryMethod transportDeliveryMethod)
+            {
+                if (transportDeliveryMethod == TransportDeliveryMethod.Unreliable)
+                {
+                    Debug.LogWarning($"[{nameof(SimpleWebTransport)}]: SendUserData does not support Unreliable delivery method. Falling back to reliable...");
+                    Peer.Send(ptr, length);
+                }
+
+                if (transportDeliveryMethod == TransportDeliveryMethod.Reliable)
+                {
+                    Peer.Send(ptr, length);
+                }
+            }
+
             public IEndPoint GetEndPoint()
             {
                 return Peer.Endpoint;
