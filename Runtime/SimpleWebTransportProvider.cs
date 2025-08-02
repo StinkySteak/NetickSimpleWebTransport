@@ -1,12 +1,11 @@
 using Netick.Unity;
 using System;
 using System.Collections.Generic;
-using UnityEditor.PackageManager;
 using UnityEngine;
 
 namespace Netick.Transport
 {
-    [CreateAssetMenu(fileName = nameof(SimpleWebTransportProvider), menuName = "Netick/SimpleWebTransportProvider")]
+    [CreateAssetMenu(fileName = nameof(SimpleWebTransportProvider), menuName = "Netick/Transport/SimpleWebTransportProvider")]
     public class SimpleWebTransportProvider : NetworkTransportProvider
     {
         public SimpleWebConfig SimpleWebConfig;
@@ -25,7 +24,7 @@ namespace Netick.Transport
 
             public override IEndPoint EndPoint => Peer.Endpoint;
 
-            public override int Mtu => 1200;
+            public override int Mtu => 1400;
 
             public override void Send(IntPtr ptr, int length)
             {
@@ -78,7 +77,12 @@ namespace Netick.Transport
 
         public override void Connect(string address, int port, byte[] connectionData, int connectionDataLength)
         {
-            _netManager.Connect(address, port);
+            if (connectionData == null)
+            {
+                _netManager.Connect(address, port, null, 0);
+            }
+
+            _netManager.Connect(address, port, connectionData, connectionDataLength);
         }
 
         public override void Disconnect(TransportConnection connection)

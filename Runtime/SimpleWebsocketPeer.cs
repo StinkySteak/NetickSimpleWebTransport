@@ -5,18 +5,30 @@ namespace Netick.Transport
     internal class SimpleWebsocketPeer
     {
         private NetManager _netManager;
-        private SimpleWebEndPoint _endpoint;
         private int _connectionId;
+        private SimpleWebEndPoint _endpoint;
 
-        public int ConnectionId => _connectionId;
         public NetManager NetManager => _netManager;
+        public int ConnectionId => _connectionId;
         public SimpleWebEndPoint Endpoint => _endpoint;
 
-        public SimpleWebsocketPeer(NetManager netManager, string address, int connectionId)
+        public SimpleWebsocketPeer()
+        {
+            _endpoint = new SimpleWebEndPoint();
+        }
+
+        public void Init(NetManager netManager, string address, int port, int connectionId)
         {
             _netManager = netManager;
-            _endpoint = new SimpleWebEndPoint(address, 0);
             _connectionId = connectionId;
+            _endpoint.Init(address, port);
+        }
+
+        public void Reset()
+        {
+            _netManager = null;
+            _connectionId = 0;
+            _endpoint.Reset();
         }
 
         public void Send(IntPtr ptr, int length)

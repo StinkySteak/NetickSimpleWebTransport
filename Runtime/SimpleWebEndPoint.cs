@@ -2,10 +2,16 @@ namespace Netick.Transport
 {
     public class SimpleWebEndPoint : IEndPoint
     {
-        public SimpleWebEndPoint(string address, int port)
+        public void Init(string address, int port)
         {
             _ipAddress = address;
             _port = port;
+        }
+
+        internal void Reset()
+        {
+            _ipAddress = string.Empty;
+            _port = 0;
         }
 
         private string _ipAddress;
