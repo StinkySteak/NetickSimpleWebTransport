@@ -40,7 +40,7 @@ namespace Netick.Transport
 
         public void Send(IntPtr ptr, int length)
         {
-            _netManager.Send(this, ptr, length);
+            _netManager.SendPacketGame(this, ptr, length);
         }
     }
 }

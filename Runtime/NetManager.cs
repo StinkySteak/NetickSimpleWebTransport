@@ -11,12 +11,11 @@ namespace Netick.Transport
         private SimpleWebServer _webServer;
         private SimpleWebClient _webClient;
         private SimpleWebsocketPeer _serverConnection;
-        private SimpleWebsocketPeer _serverConnectionCandidate;
         private SimpleWebEndPoint _serverConnectionCandidateEndpoint;
 
         private NetickEngine _engine;
 
-        private Dictionary<int, SimpleWebsocketPeer> _activePeers = new();
+        private Dictionary<int, SimpleWebsocketPeer> _activePeers;
         private List<SimpleWebsocketPeer> _waitingPeers;
         private ISimpleWebsocketEventListener _listener;
         private SimpleWebConfig _simpleWebConfig;
@@ -27,6 +26,9 @@ namespace Netick.Transport
 
         private SimpleWebServerMessageCallback _webServerMessageCallback;
         private SimpleWebClientMessageCallback _webClientMessageCallback;
+
+        private byte[] _packetConnectionRequestApproved;
+        private byte[] _sendBuffer = new byte[2048];
 
         internal void Init(NetickEngine engine, ISimpleWebsocketEventListener listener, SimpleWebConfig simpleWebConfig)
         {
@@ -43,6 +45,11 @@ namespace Netick.Transport
 
             _webServerMessageCallback = new SimpleWebServerMessageCallback();
             _webClientMessageCallback = new SimpleWebClientMessageCallback();
+
+            _packetConnectionRequestApproved = new byte[1];
+            _packetConnectionRequestApproved[0] = (byte)NetManagerPacket.ConnectionApproved;
+
+            _sendBuffer = new byte[2048];
         }
 
         public void Start() { }
@@ -138,10 +145,7 @@ namespace Netick.Transport
         {
             if (request.IsAccepted)
             {
-                byte[] bytes = new byte[1];
-                bytes[0] = (byte)NetManagerPacket.ConnectionApproved;
-
-                _webServer.SendOne(peer.ConnectionId, bytes);
+                _webServer.SendOne(peer.ConnectionId, _packetConnectionRequestApproved);
 
                 _activePeers.Add(peer.ConnectionId, peer);
                 _listener.OnPeerConnected(peer);
@@ -152,21 +156,20 @@ namespace Netick.Transport
             _webServer.KickClient(peer.ConnectionId);
         }
 
-        internal void Send(SimpleWebsocketPeer peer, IntPtr ptr, int length)
-        {
-            int packetLen = length + 1;
-            byte[] bytes = new byte[packetLen];
-            Marshal.Copy(ptr, bytes, 1, length);
 
-            bytes[0] = (byte)NetManagerPacket.Game;
+        internal void SendPacketGame(SimpleWebsocketPeer peer, IntPtr ptr, int length)
+        {
+            int sendLength = length + 1;
+            Marshal.Copy(ptr, _sendBuffer, 1, sendLength);
+            _sendBuffer[0] = (byte)NetManagerPacket.Game;
 
             if (peer.ConnectionId > 0)
             {
-                _webServer.SendOne(peer.ConnectionId, new ArraySegment<byte>(bytes));
+                _webServer.SendOne(peer.ConnectionId, new ArraySegment<byte>(_sendBuffer, 0, sendLength));
             }
             else
             {
-                _webClient.Send(new ArraySegment<byte>(bytes));
+                _webClient.Send(new ArraySegment<byte>(_sendBuffer, 0, sendLength));
             }
         }
 
@@ -204,7 +207,7 @@ namespace Netick.Transport
             _serverConnectionCandidateEndpoint = new SimpleWebEndPoint();
             _serverConnectionCandidateEndpoint.Init(address, port);
         }
-            
+
         private void OnWebClientMessageReceived(ArraySegment<byte> message)
         {
             _listener.OnNetworkReceive(_serverConnection, message.ToArray());

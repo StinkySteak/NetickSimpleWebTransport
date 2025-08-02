@@ -23,15 +23,13 @@ namespace Netick.Transport
 
             if (dataType == NetManagerPacket.Game)
             {
-                byte[] bytes = message.ToArray();
-                int packetGameLength = bytes.Length - 1;
-                byte[] packetGame = new byte[packetGameLength];
-
-                Array.Copy(bytes, 1, packetGame, 0, packetGameLength);
-                OnGameData?.Invoke(packetGame);
+                ArraySegment<byte> bytes = new ArraySegment<byte>(message.Array, message.Offset + 1, message.Count - 1);
+                OnGameData?.Invoke(bytes);
             }
             if (dataType == NetManagerPacket.ConnectionApproved)
+            {
                 OnConnectionRequestApproved?.Invoke();
+            }
         }
     }
 }
