@@ -1,9 +1,11 @@
 ## Feature
-Allow to use websocket on netick
+Allow to use websocket on netick utilizing [SimpleWebTransport](https://github.com/StinkySteak/SimpleWebTransport.git)
 
 | Feature   | Status       |
 |-----------|--------------|
-| Websocket | Experimental |
+| Websocket | Beta |
+| Send User Data | Ready |
+| Connection Request | Beta |
 
 ## Installation
 
@@ -15,7 +17,7 @@ Install Netick 2 before installing this package.
 https://github.com/NetickNetworking/NetickForUnity
 
 ### Dependencies
-https://github.com/James-Frowen/SimpleWebTransport
+https://github.com/StinkySteak/SimpleWebTransport.git?path=source
 
 ### Steps
 
