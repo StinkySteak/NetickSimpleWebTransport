@@ -11,6 +11,7 @@ namespace Netick.Transport
         private SimpleWebServer _webServer;
         private SimpleWebClient _webClient;
         private SimpleWebsocketPeer _serverConnection;
+        private SimpleWebsocketPeer _serverConnectionCandidate;
         private SimpleWebEndPoint _serverConnectionCandidateEndpoint;
 
         private NetickEngine _engine;
@@ -22,6 +23,10 @@ namespace Netick.Transport
 
         private Queue<SimpleWebsocketPeer> _freePeers;
         private const string KeyConnectionData = "connectionData";
+        private bool _isConnectedAndApproved;
+
+        private SimpleWebServerMessageCallback _webServerMessageCallback;
+        private SimpleWebClientMessageCallback _webClientMessageCallback;
 
         internal void Init(NetickEngine engine, ISimpleWebsocketEventListener listener, SimpleWebConfig simpleWebConfig)
         {
@@ -35,6 +40,9 @@ namespace Netick.Transport
 
             for (int i = 0; i < engine.Config.MaxPlayers; i++)
                 _freePeers.Enqueue(new SimpleWebsocketPeer());
+
+            _webServerMessageCallback = new SimpleWebServerMessageCallback();
+            _webClientMessageCallback = new SimpleWebClientMessageCallback();
         }
 
         public void Start() { }
@@ -46,8 +54,10 @@ namespace Netick.Transport
 
             _webServer.Start((ushort)port);
             _webServer.onConnect += OnRemoteClientConnected;
-            _webServer.onData += OnWebServerMessageReceived;
             _webServer.onDisconnect += OnRemoteClientDisconnected;
+
+            _webServerMessageCallback.Init(_webServer);
+            _webServerMessageCallback.OnGameData += OnWebServerGameMessageReceived;
         }
 
         public void Stop()
@@ -83,12 +93,12 @@ namespace Netick.Transport
             _webServer.KickClient(peer.ConnectionId);
         }
 
-        private void OnWebServerMessageReceived(int connectionId, ArraySegment<byte> bytes)
+        private void OnWebServerGameMessageReceived(int connectionId, ArraySegment<byte> message)
         {
             if (!_activePeers.TryGetValue(connectionId, out SimpleWebsocketPeer peer))
                 return;
 
-            _listener.OnNetworkReceive(peer, bytes.ToArray());
+            _listener.OnNetworkReceive(peer, message.ToArray());
         }
 
         private void OnRemoteClientConnected(int connectionId)
@@ -128,6 +138,11 @@ namespace Netick.Transport
         {
             if (request.IsAccepted)
             {
+                byte[] bytes = new byte[1];
+                bytes[0] = (byte)NetManagerPacket.ConnectionApproved;
+
+                _webServer.SendOne(peer.ConnectionId, bytes);
+
                 _activePeers.Add(peer.ConnectionId, peer);
                 _listener.OnPeerConnected(peer);
                 return;
@@ -139,8 +154,11 @@ namespace Netick.Transport
 
         internal void Send(SimpleWebsocketPeer peer, IntPtr ptr, int length)
         {
-            byte[] bytes = new byte[length];
-            Marshal.Copy(ptr, bytes, 0, length);
+            int packetLen = length + 1;
+            byte[] bytes = new byte[packetLen];
+            Marshal.Copy(ptr, bytes, 1, length);
+
+            bytes[0] = (byte)NetManagerPacket.Game;
 
             if (peer.ConnectionId > 0)
             {
@@ -178,30 +196,37 @@ namespace Netick.Transport
             _webClient.Connect(builder.Uri);
             _webClient.onConnect += OnWebClientConnected;
             _webClient.onDisconnect += OnWebClientDisconnected;
-            _webClient.onData += OnWebClientMessageReceived;
+
+            _webClientMessageCallback.Init(_webClient);
+            _webClientMessageCallback.OnConnectionRequestApproved += OnWebClientConnectionApproved;
+            _webClientMessageCallback.OnGameData += OnWebClientMessageReceived;
 
             _serverConnectionCandidateEndpoint = new SimpleWebEndPoint();
             _serverConnectionCandidateEndpoint.Init(address, port);
         }
-
-        private void OnWebClientMessageReceived(ArraySegment<byte> bytes)
+            
+        private void OnWebClientMessageReceived(ArraySegment<byte> message)
         {
-            _listener.OnNetworkReceive(_serverConnection, bytes.ToArray());
+            _listener.OnNetworkReceive(_serverConnection, message.ToArray());
+        }
+
+        private void OnWebClientConnectionApproved()
+        {
+            _serverConnection = _freePeers.Dequeue();
+            _serverConnection.Init(this, _serverConnectionCandidateEndpoint.IPAddress, _serverConnectionCandidateEndpoint.Port, 0);
+            _listener.OnPeerConnected(_serverConnection);
         }
 
         private void OnWebClientDisconnected()
         {
-            bool hasConnected = _serverConnection != null;
+            bool hasConnected = _isConnectedAndApproved;
 
             _listener.OnPeerDisconnected(_serverConnection, hasConnected ? DisconnectReason.Timeout : DisconnectReason.ConnectionFailed);
         }
 
         private void OnWebClientConnected()
         {
-            _serverConnection = _freePeers.Dequeue();
-            _serverConnection.Init(this, _serverConnectionCandidateEndpoint.IPAddress, _serverConnectionCandidateEndpoint.Port, 0);
-
-            _listener.OnPeerConnected(_serverConnection);
+            // Wait until the connection request is approved by waiting a packet confirmation
         }
 
         public void PollUpdate()
