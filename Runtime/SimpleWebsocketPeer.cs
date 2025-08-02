@@ -7,14 +7,21 @@ namespace Netick.Transport
         private NetManager _netManager;
         private int _connectionId;
         private SimpleWebEndPoint _endpoint;
+        private SimpleWebConnectionRequest _connectionRequest;
 
         public NetManager NetManager => _netManager;
         public int ConnectionId => _connectionId;
         public SimpleWebEndPoint Endpoint => _endpoint;
+        public SimpleWebConnectionRequest ConnectionRequest => _connectionRequest;
 
         public SimpleWebsocketPeer()
         {
             _endpoint = new SimpleWebEndPoint();
+        }
+
+        public void SetConnectionRequest(SimpleWebConnectionRequest request)
+        {
+            _connectionRequest = request;
         }
 
         public void Init(NetManager netManager, string address, int port, int connectionId)

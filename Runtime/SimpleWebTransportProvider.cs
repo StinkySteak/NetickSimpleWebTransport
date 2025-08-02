@@ -80,6 +80,7 @@ namespace Netick.Transport
             if (connectionData == null)
             {
                 _netManager.Connect(address, port, null, 0);
+                return;
             }
 
             _netManager.Connect(address, port, connectionData, connectionDataLength);
@@ -168,6 +169,16 @@ namespace Netick.Transport
                 _buffer.SetFrom(ptr, bytes.Length, bytes.Length);
                 NetworkPeer.Receive(c, _buffer);
             }
+        }
+
+        void ISimpleWebsocketEventListener.OnConnectRequest(SimpleWebsocketPeer peer, SimpleWebConnectionRequest request, byte[] bytes)
+        {
+            bool accepted = NetworkPeer.OnConnectRequest(bytes, bytes.Length, peer.Endpoint);
+
+            if (accepted)
+                request.Accept();
+            else
+                request.Reject();
         }
     }
 }

@@ -15,11 +15,13 @@ namespace Netick.Transport
 
         private NetickEngine _engine;
 
-        private Dictionary<int, SimpleWebsocketPeer> _peers = new();
+        private Dictionary<int, SimpleWebsocketPeer> _activePeers = new();
+        private List<SimpleWebsocketPeer> _waitingPeers;
         private ISimpleWebsocketEventListener _listener;
         private SimpleWebConfig _simpleWebConfig;
 
         private Queue<SimpleWebsocketPeer> _freePeers;
+        private const string KeyConnectionData = "connectionData";
 
         internal void Init(NetickEngine engine, ISimpleWebsocketEventListener listener, SimpleWebConfig simpleWebConfig)
         {
@@ -27,7 +29,9 @@ namespace Netick.Transport
             _listener = listener;
             _simpleWebConfig = simpleWebConfig;
 
-            _freePeers = new Queue<SimpleWebsocketPeer>(engine.Config.MaxPlayers);
+            _freePeers = new(engine.Config.MaxPlayers);
+            _waitingPeers = new(engine.Config.MaxPlayers);
+            _activePeers = new(engine.Config.MaxPlayers);
 
             for (int i = 0; i < engine.Config.MaxPlayers; i++)
                 _freePeers.Enqueue(new SimpleWebsocketPeer());
@@ -41,9 +45,9 @@ namespace Netick.Transport
             _webServer = new SimpleWebServer(5000, tcpConfig, ushort.MaxValue, 5000, new SslConfig());
 
             _webServer.Start((ushort)port);
-            _webServer.onConnect += OnConnect;
+            _webServer.onConnect += OnRemoteClientConnected;
             _webServer.onData += OnWebServerMessageReceived;
-            _webServer.onDisconnect += OnDisconnected;
+            _webServer.onDisconnect += OnRemoteClientDisconnected;
         }
 
         public void Stop()
@@ -52,16 +56,20 @@ namespace Netick.Transport
             _webClient?.Disconnect();
         }
 
-        private void OnDisconnected(int connectionId)
+        private void OnRemoteClientDisconnected(int connectionId)
         {
-            SimpleWebsocketPeer peer = _peers[connectionId];
+            bool wasActivePeer = _activePeers.TryGetValue(connectionId, out SimpleWebsocketPeer activePeer);
 
-            _peers.Remove(connectionId);
+            if (wasActivePeer)
+            {
+                _activePeers.Remove(connectionId);
 
-            _listener.OnPeerDisconnected(peer, DisconnectReason.Timeout);
+                _listener.OnPeerDisconnected(activePeer, DisconnectReason.Timeout);
 
-            _freePeers.Enqueue(peer);
-            peer.Reset();
+                activePeer.Reset();
+                _freePeers.Enqueue(activePeer);
+                return;
+            }
         }
 
         internal void DisconnectPeer(SimpleWebsocketPeer peer)
@@ -77,36 +85,56 @@ namespace Netick.Transport
 
         private void OnWebServerMessageReceived(int connectionId, ArraySegment<byte> bytes)
         {
-            SimpleWebsocketPeer peer = _peers[connectionId];
+            if (!_activePeers.TryGetValue(connectionId, out SimpleWebsocketPeer peer))
+                return;
 
             _listener.OnNetworkReceive(peer, bytes.ToArray());
         }
 
-        private void OnConnect(int connectionId)
+        private void OnRemoteClientConnected(int connectionId)
         {
             _webServer.GetClientEndPoint(connectionId, out string address, out int port);
 
             SimpleWebsocketPeer peer = _freePeers.Dequeue();
             peer.Init(this, address, port, connectionId);
 
-            _peers.Add(connectionId, peer);
+            SimpleWebConnectionRequest request = new SimpleWebConnectionRequest();
 
-            foreach (var h in _webServer.GetClientRequest(connectionId).Headers)
+            if (_webServer.GetClientRequest(connectionId).RequestLine != null)
             {
-                UnityEngine.Debug.Log($"[{h.Key}] = {h.Value}");
+                string requestLine = _webServer.GetClientRequest(connectionId).RequestLine;
+
+                string[] parts = requestLine.Split(' ');
+                string pathAndQuery = parts[1];
+
+                Uri uri = new Uri("wss://dummy" + pathAndQuery);
+                string base64Encoded = System.Web.HttpUtility.ParseQueryString(uri.Query)[KeyConnectionData];
+
+                byte[] bytes = SimpleWebConnectionPayload.BytesFromWebSocketBase64(base64Encoded);
+
+                request.SetData(bytes);
+                peer.SetConnectionRequest(request);
+
+                _waitingPeers.Add(peer);
+                _listener.OnConnectRequest(peer, request, bytes);
+                return;
             }
 
-            UnityEngine.Debug.Log($"{_webServer.GetClientRequest(connectionId).RequestLine}");
+            _waitingPeers.Add(peer);
+            _listener.OnConnectRequest(peer, request, Array.Empty<byte>());
+        }
 
-            string requestLine = "/?connectionData=SW0gbGVhcm5pbmcgQyMsIHBsZWFzZSBjb25uZWN0IG1lIHRvIHRoZSBzZXJ2ZXI HTTP/1.1";
+        private void OnConnectionRequestComplete(SimpleWebsocketPeer peer, SimpleWebConnectionRequest request)
+        {
+            if (request.IsAccepted)
+            {
+                _activePeers.Add(peer.ConnectionId, peer);
+                _listener.OnPeerConnected(peer);
+                return;
+            }
 
-            string[] parts = requestLine.Split(' ');
-            string pathAndQuery = parts[0];
-
-            Uri uri = new Uri("wss://dummy" + pathAndQuery);
-            string base64Encoded = System.Web.HttpUtility.ParseQueryString(uri.Query)["connectionData"];
-
-            _listener.OnPeerConnected(peer);
+            _freePeers.Enqueue(peer);
+            _webServer.KickClient(peer.ConnectionId);
         }
 
         internal void Send(SimpleWebsocketPeer peer, IntPtr ptr, int length)
@@ -136,13 +164,16 @@ namespace Netick.Transport
                 Port = port,
             };
 
+            NameValueCollection query = System.Web.HttpUtility.ParseQueryString(string.Empty);
+            string connectionPayload = string.Empty;
+
             if (connectionData != null)
             {
-                string base64 = SimpleWebConnectionPayload.BytesToWebSocketBase64(connectionData);
-                NameValueCollection query = System.Web.HttpUtility.ParseQueryString(string.Empty);
-                query.Set("connectionData", base64);
-                builder.Query = query.ToString();
+                connectionPayload = SimpleWebConnectionPayload.BytesToWebSocketBase64(connectionData);
             }
+
+            query.Set(KeyConnectionData, connectionPayload);
+            builder.Query = query.ToString();
 
             _webClient.Connect(builder.Uri);
             _webClient.onConnect += OnWebClientConnected;
@@ -165,7 +196,6 @@ namespace Netick.Transport
             _listener.OnPeerDisconnected(_serverConnection, hasConnected ? DisconnectReason.Timeout : DisconnectReason.ConnectionFailed);
         }
 
-
         private void OnWebClientConnected()
         {
             _serverConnection = _freePeers.Dequeue();
@@ -179,6 +209,17 @@ namespace Netick.Transport
             if (_engine.IsServer)
             {
                 _webServer.ProcessMessageQueue();
+
+                for (int i = _waitingPeers.Count - 1; i >= 0; i--)
+                {
+                    SimpleWebsocketPeer peer = _waitingPeers[i];
+
+                    if (peer.ConnectionRequest.IsComplete)
+                    {
+                        _waitingPeers.RemoveAt(i);
+                        OnConnectionRequestComplete(peer, peer.ConnectionRequest);
+                    }
+                }
             }
 
             if (_engine.IsClient)
