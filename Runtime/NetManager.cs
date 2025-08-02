@@ -105,7 +105,7 @@ namespace Netick.Transport
             if (!_activePeers.TryGetValue(connectionId, out SimpleWebsocketPeer peer))
                 return;
 
-            _listener.OnNetworkReceive(peer, message.ToArray());
+            _listener.OnNetworkReceive(peer, message);
         }
 
         private void OnRemoteClientConnected(int connectionId)
@@ -202,15 +202,15 @@ namespace Netick.Transport
 
             _webClientMessageCallback.Init(_webClient);
             _webClientMessageCallback.OnConnectionRequestApproved += OnWebClientConnectionApproved;
-            _webClientMessageCallback.OnGameData += OnWebClientMessageReceived;
+            _webClientMessageCallback.OnGameData += OnWebClientGameMessageReceived;
 
             _serverConnectionCandidateEndpoint = new SimpleWebEndPoint();
             _serverConnectionCandidateEndpoint.Init(address, port);
         }
 
-        private void OnWebClientMessageReceived(ArraySegment<byte> message)
+        private void OnWebClientGameMessageReceived(ArraySegment<byte> message)
         {
-            _listener.OnNetworkReceive(_serverConnection, message.ToArray());
+            _listener.OnNetworkReceive(_serverConnection, message);
         }
 
         private void OnWebClientConnectionApproved()

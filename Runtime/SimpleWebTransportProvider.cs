@@ -1,6 +1,7 @@
 using Netick.Unity;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace Netick.Transport
@@ -56,6 +57,7 @@ namespace Netick.Transport
         private Queue<SimpleWebConnection> _freeConnections;
         private NetManager _netManager;
         private BitBuffer _buffer;
+        private byte[] _receiveBuffer;
 
         public SimpleWebTransport(SimpleWebTransportProvider transportProvider)
         {
@@ -73,6 +75,8 @@ namespace Netick.Transport
 
             for (int i = 0; i < Engine.Config.MaxPlayers; i++)
                 _freeConnections.Enqueue(new SimpleWebConnection());
+
+            _receiveBuffer = new byte[2048];
         }
 
         public override void Connect(string address, int port, byte[] connectionData, int connectionDataLength)
@@ -159,14 +163,16 @@ namespace Netick.Transport
             }
         }
 
-        void ISimpleWebsocketEventListener.OnNetworkReceive(SimpleWebsocketPeer peer, byte[] bytes)
+        void ISimpleWebsocketEventListener.OnNetworkReceive(SimpleWebsocketPeer peer, ArraySegment<byte> bytes)
         {
             if (!_connections.TryGetValue(peer, out var c))
                 return;
 
-            fixed (byte* ptr = bytes)
+            Array.Copy(bytes.Array, bytes.Offset, _receiveBuffer, 0, bytes.Count);
+
+            fixed (byte* ptr = _receiveBuffer)
             {
-                _buffer.SetFrom(ptr, bytes.Length, bytes.Length);
+                _buffer.SetFrom(ptr, bytes.Count, bytes.Count);
                 NetworkPeer.Receive(c, _buffer);
             }
         }
