@@ -1,6 +1,6 @@
 {
-  "name": "com.stinkysteak.com.stinkysteak.simplewebtransportnetick",
-  "version": "0.1.0",
+  "name": "com.stinkysteak.simplewebtransportnetick",
+  "version": "0.1.1",
   "displayName": "SimpleWebTransport for Netick",
   "description": "SimpleWebTransport for Netick",
   "unity": "2021.3",
